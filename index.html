@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>عاش - رفيقك في الجيم</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="theme-color" content="#141210" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="عاش" />
+<meta name="mobile-web-app-capable" content="yes" />
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@700;800;900&family=Tajawal:wght@400;500;700&display=swap');
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin:0; padding:0; color:#F3EEE3; font-family:'Tajawal','Segoe UI',sans-serif; overscroll-behavior:none;
+    background-color:#141210;
+    background-image:
+      radial-gradient(circle at 85% 0%, rgba(193,81,46,.16), transparent 45%),
+      radial-gradient(circle at 10% 100%, rgba(224,172,79,.08), transparent 40%),
+      repeating-linear-gradient(135deg, rgba(255,255,255,.015) 0px, rgba(255,255,255,.015) 1px, transparent 1px, transparent 5px);
+    background-attachment: fixed;
+  }
+  .cairo { font-family:'Cairo','Tajawal',sans-serif; }
+  button { font-family:inherit; cursor:pointer; border:none; transition: transform .12s ease, filter .12s ease, box-shadow .12s ease; }
+  button:active { transform: scale(0.96); filter: brightness(0.94); }
+  input { font-family:inherit; }
+  ::-webkit-scrollbar { width:4px; height:4px; }
+  ::-webkit-scrollbar-thumb { background:#3D362B; border-radius:4px; }
+  @keyframes popIn { 0%{transform:scale(.6) translateY(10px);opacity:0} 60%{transform:scale(1.05);opacity:1} 100%{transform:scale(1);opacity:1} }
+  .toast-anim { animation: popIn .3s ease-out; }
+
+  /* ---- splash screen ---- */
+  #splash {
+    position:fixed; inset:0; z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    background:
+      radial-gradient(circle at 60% 62%, rgba(193,81,46,.35), transparent 55%),
+      radial-gradient(circle at 28% 20%, rgba(224,172,79,.18), transparent 40%),
+      #0d0b09;
+    transition: opacity .5s ease, visibility .5s ease;
+  }
+  #splash.hide { opacity:0; visibility:hidden; pointer-events:none; }
+  #splash .mark {
+    width:96px; height:96px; border-radius:26px; object-fit:cover;
+    box-shadow: 0 0 0 1px rgba(224,172,79,.35), 0 10px 40px rgba(0,0,0,.6), 0 0 60px rgba(193,81,46,.25);
+    animation: markPop .6s cubic-bezier(.2,.9,.25,1.2);
+  }
+  #splash .word { font-family:'Cairo',sans-serif; font-weight:900; font-size:34px; color:#E0AC4F; letter-spacing:1px;
+    text-shadow: 0 0 24px rgba(224,172,79,.55), 0 2px 0 rgba(0,0,0,.4); animation: wordIn .7s ease .1s both; }
+  #splash .tag { font-size:13px; color:#A39A8B; animation: wordIn .7s ease .25s both; }
+  @keyframes markPop { 0%{transform:scale(.6);opacity:0} 70%{transform:scale(1.06);opacity:1} 100%{transform:scale(1);opacity:1} }
+  @keyframes wordIn { 0%{transform:translateY(8px);opacity:0} 100%{transform:translateY(0);opacity:1} }
+</style>
+</head>
+<body>
+<div id="splash">
+  <img class="mark" src="icons/icon-512.png" alt="عاش" />
+  <div class="word">عاش</div>
+  <div class="tag">زود بلاطة كمان.. خش بقلب 💪</div>
+</div>
+<div id="root"></div>
+
+<script>
+  // محمّل مكتبات بيسابق بين أكتر من مصدر (CDN) لكل مكتبة في نفس الوقت
+  // (unpkg + jsDelivr + cdnjs)، وبياخد أول واحد يستجيب، بدل ما يستنى مصدر
+  // يفشل الأول قبل ما يجرب اللي بعده. ده بيقلل وقت التحميل جدًا وبيحل مشاكل
+  // شبكات النت المتقطعة أو اللي بتحجب CDN معين مؤقتًا. الترتيب بين المكتبات
+  // (React قبل ReactDOM) بيتحافظ عليه عن طريق async=false.
+  function aashLoadScript(urls, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let failCount = 0;
+      const tags = [];
+      const timer = setTimeout(() => {
+        if (!settled) { settled = true; reject(new Error("timeout: " + urls[0])); }
+      }, timeoutMs || 15000);
+      urls.forEach((url) => {
+        const s = document.createElement("script");
+        s.src = url;
+        // ملحوظة: من غير async=false هنا عشان المصادر البديلة (unpkg/jsdelivr/cdnjs)
+        // تتسابق فعليًا مع بعض. ترتيب المكتبات (React قبل ReactDOM) متضمون
+        // أصلاً لأن aashBoot بيستنى (await) كل مكتبة قبل ما يبدأ التالية.
+        s.onload = () => {
+          if (!settled) { settled = true; clearTimeout(timer); resolve(); }
+        };
+        s.onerror = () => {
+          failCount++;
+          if (!settled && failCount === urls.length) {
+            clearTimeout(timer);
+            settled = true;
+            reject(new Error("all sources failed: " + urls[0]));
+          }
+        };
+        tags.push(s);
+        document.head.appendChild(s);
+      });
+    });
+  }
+
+  async function aashBoot() {
+    try {
+      await aashLoadScript([
+        "https://unpkg.com/react@18/umd/react.production.min.js",
+        "https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js",
+        "https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js",
+      ]);
+      await aashLoadScript([
+        "https://unpkg.com/react-dom@18/umd/react-dom.production.min.js",
+        "https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js",
+        "https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js",
+      ]);
+      await aashLoadScript([
+        "https://unpkg.com/@babel/standalone@7/babel.min.js",
+        "https://cdn.jsdelivr.net/npm/@babel/standalone@7/babel.min.js",
+        "https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.28.4/babel.min.js",
+      ]);
+      const code = document.getElementById("aash-app-source").textContent;
+      const transformed = Babel.transform(code, { presets: ["react"] }).code;
+      (0, eval)(transformed);
+    } catch (err) {
+      window.__aashLoadError = err;
+    }
+  }
+  aashBoot();
+</script>
+
+<script type="text/plain" id="aash-app-source">
+const { useState, useEffect, useRef, useCallback } = React;
+
+const C = {
+  bg: "#141210", surface: "#1E1B17", surfaceAlt: "#2A251E", border: "#3D362B",
+  text: "#F3EEE3", textMuted: "#A39A8B", gold: "#E0AC4F", rust: "#C1512E", ink: "#181410",
+};
+const DAYS = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+const HYPE = ["عاش! 💪", "وحش! 🔥", "تحفة كده! 👊", "كملها كده!", "نار! 🔥", "أسد يا وحش! 🦁", "جامد أوي!"];
+function pickHype() { return HYPE[Math.floor(Math.random() * HYPE.length)]; }
+const DHIKR = ["سبحان الله 🤍", "الحمد لله 🤍", "الله أكبر 🤍", "لا إله إلا الله 🤍", "أستغفر الله 🤍", "لا حول ولا قوة إلا بالله 🤍"];
+function estOneRM(weight, reps) { return weight * (1 + reps / 30); }
+function suggestNextWeight(weight, reps, targetReps) {
+  const step = weight >= 40 ? 2.5 : 1.25;
+  if (reps >= targetReps + 2) return weight + step * 2;
+  if (reps >= targetReps) return weight + step;
+  return weight;
+}
+function buzz(pattern) { if (navigator.vibrate) try { navigator.vibrate(pattern); } catch (e) {} }
+let cachedVoice = null, voiceSearched = false;
+function pickArabicMaleVoice() {
+  if (!("speechSynthesis" in window)) return null;
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices.length) return null;
+  const arabicVoices = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith("ar"));
+  if (!arabicVoices.length) return null;
+  const maleHints = ["male", "naayf", "majed", "tarik", "hamed", "abdullah", "khalid", "faisal", "rashid"];
+  const femaleHints = ["female", "hoda", "zariyah", "salma", "amira", "laila", "reem", "fatima"];
+  const male = arabicVoices.find(v => maleHints.some(h => v.name.toLowerCase().includes(h)));
+  if (male) return male;
+  const notFemale = arabicVoices.find(v => !femaleHints.some(h => v.name.toLowerCase().includes(h)));
+  return notFemale || arabicVoices[0];
+}
+function speak(text) {
+  try {
+    if (!("speechSynthesis" in window)) return;
+    const clean = text.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}]/gu, "").trim();
+    if (!clean) return;
+    const u = new SpeechSynthesisUtterance(clean);
+    u.lang = "ar-SA"; u.rate = 0.95; u.volume = 0.8; u.pitch = 0.85;
+    if (!cachedVoice && !voiceSearched) { cachedVoice = pickArabicMaleVoice(); voiceSearched = true; }
+    if (cachedVoice) u.voice = cachedVoice;
+    window.speechSynthesis.speak(u);
+  } catch (e) {}
+}
+if (typeof window !== "undefined" && "speechSynthesis" in window) {
+  window.speechSynthesis.onvoiceschanged = () => { cachedVoice = pickArabicMaleVoice(); voiceSearched = true; };
+}
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 6) return "سهرانين للنهاردة؟ 🌙";
+  if (h < 12) return "صباح الأبطال ☀️";
+  if (h < 17) return "يلا نكسر النهاردة 💪";
+  if (h < 21) return "وقت الجدية 🔥";
+  return "تمرين بالليل نار 🌙";
+}
+
+function todayKey(d = new Date()) {
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  return todayKey(d);
+}
+function fmtClock(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60), s = totalSeconds % 60;
+  return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+}
+
+// ---- local storage (real, synchronous, works fully offline) ----
+function loadState() {
+  try {
+    const raw = localStorage.getItem("aashData");
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return { customExercises: [], plan: {}, logs: [], sessionHistory: [], programId: null, activeSessionStart: null, restDuration: 90, bodyWeights: [], soundEnabled: true, exerciseNotes: {}, dhikrEnabled: true };
+}
+function saveState(s) {
+  try { localStorage.setItem("aashData", JSON.stringify(s)); } catch (e) { console.error(e); }
+}
+let audioCtx = null;
+function playBeep() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = audioCtx.currentTime;
+    [0, 0.18, 0.36].forEach((offset, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = i < 2 ? 880 : 1175;
+      gain.gain.setValueAtTime(0.0001, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.25, now + offset + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.15);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(now + offset); osc.stop(now + offset + 0.16);
+    });
+  } catch (e) {}
+}
+
+// ---- exercise pictograms ----
+const EXERCISE_ICON = {
+  "بنش برس": "bench", "بنش برس مائل": "inclineBench", "ضغط أكتاف": "shoulderPress",
+  "تفتيح جانبي": "lateralRaise", "سكوات": "squat", "ديدليفت": "deadlift", "لنجز": "lunge",
+  "بريس ساق": "legPress", "سحب علوي (لات بولداون)": "latPulldown", "تجديف بار": "row",
+  "عقلة": "pullup", "بايسبس كيرل": "curl", "تراي سبس بوش داون": "pushdown",
+  "كرانش بطن": "crunch", "بلانك": "plank",
+};
+const PRESET_EXERCISES = Object.keys(EXERCISE_ICON);
+
+function ExerciseIcon({ name, size, color }) {
+  size = size || 28;
+  const pose = EXERCISE_ICON[name] || "generic";
+  const stroke = color || C.text;
+  const common = { fill: "none", stroke, strokeWidth: 3.4, strokeLinecap: "round", strokeLinejoin: "round" };
+  const head = (cx, cy) => <circle cx={cx} cy={cy} r={4} fill={stroke} stroke="none" />;
+  const plate = (cx, cy) => <circle cx={cx} cy={cy} r={3.2} {...common} />;
+  let content;
+  switch (pose) {
+    case "bench": content = <>{head(11,22)}<line x1="15" y1="23" x2="27" y2="23" {...common}/><line x1="20" y1="23" x2="20" y2="10" {...common}/>{plate(20,8)}<line x1="7" y1="30" x2="31" y2="30" {...common}/></>; break;
+    case "inclineBench": content = <>{head(10,21)}<line x1="13" y1="22" x2="24" y2="27" {...common}/><line x1="20" y1="24" x2="26" y2="12" {...common}/>{plate(28,9)}<line x1="6" y1="26" x2="24" y2="33" {...common}/></>; break;
+    case "shoulderPress": content = <>{head(20,8)}<line x1="20" y1="12" x2="20" y2="24" {...common}/><line x1="20" y1="14" x2="20" y2="6" {...common}/><line x1="20" y1="6" x2="12" y2="4" {...common}/><line x1="20" y1="6" x2="28" y2="4" {...common}/>{plate(11,4)}{plate(29,4)}<line x1="20" y1="24" x2="15" y2="35" {...common}/><line x1="20" y1="24" x2="25" y2="35" {...common}/></>; break;
+    case "lateralRaise": content = <>{head(20,8)}<line x1="20" y1="12" x2="20" y2="25" {...common}/><line x1="20" y1="15" x2="7" y2="15" {...common}/><line x1="20" y1="15" x2="33" y2="15" {...common}/>{plate(6,15)}{plate(34,15)}<line x1="20" y1="25" x2="15" y2="35" {...common}/><line x1="20" y1="25" x2="25" y2="35" {...common}/></>; break;
+    case "squat": content = <>{head(20,7)}<line x1="10" y1="12" x2="30" y2="12" {...common}/>{plate(9,12)}{plate(31,12)}<line x1="20" y1="11" x2="20" y2="20" {...common}/><line x1="20" y1="20" x2="13" y2="26" {...common}/><line x1="13" y1="26" x2="14" y2="35" {...common}/><line x1="20" y1="20" x2="27" y2="26" {...common}/><line x1="27" y1="26" x2="26" y2="35" {...common}/></>; break;
+    case "deadlift": content = <>{head(12,12)}<line x1="14" y1="14" x2="25" y2="23" {...common}/><line x1="25" y1="23" x2="17" y2="30" {...common}/><line x1="14" y1="14" x2="10" y2="27" {...common}/><line x1="10" y1="27" x2="10" y2="34" {...common}/><line x1="8" y1="33" x2="24" y2="33" {...common}/>{plate(7,33)}{plate(25,33)}</>; break;
+    case "lunge": content = <>{head(16,7)}<line x1="16" y1="11" x2="18" y2="20" {...common}/><line x1="18" y1="20" x2="11" y2="23" {...common}/><line x1="11" y1="23" x2="11" y2="35" {...common}/><line x1="18" y1="20" x2="27" y2="27" {...common}/><line x1="27" y1="27" x2="24" y2="17" {...common}/></>; break;
+    case "legPress": content = <>{head(9,17)}<line x1="12" y1="18" x2="20" y2="22" {...common}/><line x1="20" y1="22" x2="20" y2="30" {...common}/><line x1="20" y1="25" x2="30" y2="25" {...common}/><line x1="30" y1="14" x2="30" y2="35" {...common}/></>; break;
+    case "latPulldown": content = <>{head(20,13)}<line x1="8" y1="7" x2="32" y2="7" {...common}/><line x1="20" y1="7" x2="20" y2="17" {...common}/><line x1="20" y1="17" x2="13" y2="18" {...common}/><line x1="20" y1="17" x2="27" y2="18" {...common}/><line x1="20" y1="17" x2="20" y2="27" {...common}/><line x1="20" y1="27" x2="15" y2="35" {...common}/><line x1="20" y1="27" x2="25" y2="35" {...common}/></>; break;
+    case "row": content = <>{head(25,11)}<line x1="23" y1="14" x2="14" y2="20" {...common}/><line x1="14" y1="20" x2="23" y2="20" {...common}/><line x1="14" y1="20" x2="9" y2="27" {...common}/><line x1="9" y1="27" x2="9" y2="34" {...common}/><line x1="6" y1="26" x2="17" y2="26" {...common}/></>; break;
+    case "pullup": content = <><line x1="7" y1="6" x2="33" y2="6" {...common}/>{head(20,12)}<line x1="20" y1="8" x2="13" y2="6" {...common}/><line x1="20" y1="8" x2="27" y2="6" {...common}/><line x1="20" y1="16" x2="20" y2="27" {...common}/><line x1="20" y1="27" x2="15" y2="35" {...common}/><line x1="20" y1="27" x2="25" y2="35" {...common}/></>; break;
+    case "curl": content = <>{head(20,7)}<line x1="20" y1="11" x2="19" y2="23" {...common}/><line x1="19" y1="23" x2="25" y2="16" {...common}/>{plate(26,13)}<line x1="19" y1="23" x2="14" y2="35" {...common}/><line x1="19" y1="23" x2="24" y2="35" {...common}/></>; break;
+    case "pushdown": content = <>{head(20,7)}<line x1="20" y1="11" x2="19" y2="21" {...common}/><line x1="19" y1="15" x2="24" y2="17" {...common}/><line x1="24" y1="6" x2="24" y2="26" {...common}/><line x1="19" y1="21" x2="14" y2="35" {...common}/><line x1="19" y1="21" x2="24" y2="35" {...common}/></>; break;
+    case "crunch": content = <>{head(9,25)}<path d="M12 26 Q20 32 26 24" {...common}/><line x1="26" y1="24" x2="26" y2="15" {...common}/><line x1="26" y1="15" x2="33" y2="18" {...common}/></>; break;
+    case "plank": content = <>{head(8,20)}<line x1="10" y1="21" x2="31" y2="29" {...common}/><line x1="10" y1="21" x2="10" y2="30" {...common}/></>; break;
+    default: content = <><rect x="14" y="16" width="12" height="8" rx="1.5" {...common}/><line x1="6" y1="20" x2="14" y2="20" {...common}/><line x1="26" y1="20" x2="34" y2="20" {...common}/>{plate(5,20)}{plate(35,20)}</>;
+  }
+  return <svg width={size} height={size} viewBox="0 0 40 40">{content}</svg>;
+}
+
+// ---- ready-made programs ----
+const fullBody = [{name:"سكوات",sets:3,reps:10},{name:"بنش برس",sets:3,reps:10},{name:"تجديف بار",sets:3,reps:10},{name:"ضغط أكتاف",sets:3,reps:10},{name:"كرانش بطن",sets:3,reps:15}];
+const upper = [{name:"بنش برس",sets:4,reps:8},{name:"تجديف بار",sets:4,reps:8},{name:"ضغط أكتاف",sets:3,reps:10},{name:"سحب علوي (لات بولداون)",sets:3,reps:10},{name:"بايسبس كيرل",sets:3,reps:12},{name:"تراي سبس بوش داون",sets:3,reps:12}];
+const lower = [{name:"سكوات",sets:4,reps:8},{name:"ديدليفت",sets:3,reps:8},{name:"لنجز",sets:3,reps:10},{name:"بريس ساق",sets:3,reps:12},{name:"بلانك",sets:3,reps:30}];
+const push = [{name:"بنش برس",sets:4,reps:8},{name:"بنش برس مائل",sets:3,reps:10},{name:"ضغط أكتاف",sets:3,reps:10},{name:"تفتيح جانبي",sets:3,reps:12},{name:"تراي سبس بوش داون",sets:3,reps:12}];
+const pull = [{name:"عقلة",sets:3,reps:8},{name:"سحب علوي (لات بولداون)",sets:3,reps:10},{name:"تجديف بار",sets:4,reps:8},{name:"بايسبس كيرل",sets:3,reps:12}];
+const legs = [{name:"سكوات",sets:4,reps:8},{name:"ديدليفت",sets:3,reps:8},{name:"لنجز",sets:3,reps:10},{name:"بريس ساق",sets:3,reps:12}];
+const PROGRAMS = [
+  {id:"beginner",name:"مبتدئ — جسم كامل",desc:"٣ أيام في الأسبوع، تمرين كل الجسم كل مرة",plan:{0:fullBody,2:fullBody,4:fullBody}},
+  {id:"upperlower",name:"متوسط — علوي / سفلي",desc:"٤ أيام، علوي وسفلي بالتبادل",plan:{0:upper,1:lower,3:upper,4:lower}},
+  {id:"ppl",name:"متقدم — Push / Pull / Legs",desc:"٦ أيام، دفع وسحب ورجل",plan:{0:push,1:pull,2:legs,3:push,4:pull,5:legs}},
+];
+
+function App() {
+  const [state, setState] = useState(loadState);
+  const [tab, setTab] = useState("home");
+  const [toast, setToast] = useState(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const persist = useCallback((next) => { setState(next); saveState(next); }, []);
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1500); };
+
+  const allExercises = [...PRESET_EXERCISES, ...state.customExercises];
+
+  return (
+    <div style={{ background: C.bg, color: C.text, minHeight: "100vh", display:"flex", flexDirection:"column" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"20px 20px 12px", borderBottom:"1px solid "+C.border, background:"linear-gradient(180deg, rgba(224,172,79,.06), transparent)" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <img src="icons/icon-192.png" alt="" style={{ width:34, height:34, borderRadius:9, boxShadow:"0 0 0 1px rgba(224,172,79,.35), 0 4px 14px rgba(0,0,0,.5)" }} />
+          <div>
+            <div className="cairo" style={{ fontWeight:900, fontSize:22, color:C.gold, textShadow:"0 0 18px rgba(224,172,79,.35)", letterSpacing:.5 }}>عاش</div>
+            <div style={{ fontSize:11, color:C.textMuted }}>{DAYS[new Date().getDay()]}</div>
+          </div>
+        </div>
+        <button onClick={() => setSettingsOpen(true)} style={{ background:C.surface, borderRadius:999, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", border:"1px solid "+C.border, fontSize:16, boxShadow:"0 2px 8px rgba(0,0,0,.35)" }}>⚙️</button>
+      </div>
+
+      <div style={{ flex:1, overflowY:"auto", padding:"16px 16px 96px" }}>
+        {tab === "home" && <HomeTab state={state} setTab={setTab} persist={persist} />}
+        {tab === "workout" && <WorkoutTab state={state} persist={persist} allExercises={allExercises} showToast={showToast} />}
+        {tab === "plan" && <PlanTab state={state} persist={persist} allExercises={allExercises} />}
+        {tab === "progress" && <ProgressTab state={state} allExercises={allExercises} persist={persist} />}
+        {tab === "history" && <HistoryTab state={state} />}
+      </div>
+
+      {toast && (
+        <div className="toast-anim" style={{ position:"fixed", left:"50%", transform:"translateX(-50%)", top:24, zIndex:50 }}>
+          <div className="cairo" style={{ fontWeight:900, fontSize:18, padding:"8px 20px", borderRadius:999, background:C.gold, color:C.ink }}>{toast}</div>
+        </div>
+      )}
+
+      <div style={{ position:"fixed", bottom:0, left:0, right:0, display:"flex", justifyContent:"space-around", alignItems:"center", padding:"10px 0", background:C.surface, borderTop:"1px solid "+C.border, paddingBottom:"calc(10px + env(safe-area-inset-bottom))" }}>
+        <NavBtn emoji="🏠" label="الرئيسية" active={tab==="home"} onClick={() => setTab("home")} />
+        <NavBtn emoji="🏋️" label="تمرين" active={tab==="workout"} onClick={() => setTab("workout")} />
+        <NavBtn emoji="📋" label="خطتي" active={tab==="plan"} onClick={() => setTab("plan")} />
+        <NavBtn emoji="📈" label="تقدمي" active={tab==="progress"} onClick={() => setTab("progress")} />
+        <NavBtn emoji="🗓️" label="سجلي" active={tab==="history"} onClick={() => setTab("history")} />
+      </div>
+
+      {settingsOpen && <SettingsModal state={state} persist={persist} showToast={showToast} onClose={() => setSettingsOpen(false)} />}
+    </div>
+  );
+}
+
+function SettingsModal({ state, persist, showToast, onClose }) {
+  const fileRef = useRef(null);
+  const [showInfo, setShowInfo] = useState(false);
+  const setRest = (v) => persist({ ...state, restDuration: v });
+
+  const exportData = () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "aash-backup-" + todayKey() + ".json";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("اتحفظت النسخة الاحتياطية ✅");
+  };
+
+  const importData = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        persist(parsed);
+        showToast("رجّعنا بياناتك 👍");
+      } catch (err) {
+        showToast("الملف مش سليم ⚠️");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const resetAll = () => {
+    if (window.confirm("متأكد إنك عايز تمسح كل بياناتك؟ الخطوة دي ملهاش رجوع.")) {
+      persist({ customExercises: [], plan: {}, logs: [], sessionHistory: [], programId: null, activeSessionStart: null, restDuration: state.restDuration });
+      showToast("اتمسح كل حاجة");
+    }
+  };
+
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.6)", zIndex:60, display:"flex", alignItems:"flex-end" }}>
+      <div onClick={e => e.stopPropagation()} style={{ width:"100%", background:C.bg, borderTop:"1px solid "+C.border, borderTopLeftRadius:24, borderTopRightRadius:24, padding:20, maxHeight:"85vh", overflowY:"auto" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+          <div className="cairo" style={{ fontWeight:900, fontSize:18 }}>الإعدادات</div>
+          <button onClick={onClose} style={{ background:"transparent", color:C.textMuted, fontSize:18 }}>✕</button>
+        </div>
+
+        <div style={{ marginBottom:20 }}>
+          <div className="cairo" style={{ fontWeight:700, fontSize:14, color:C.gold, marginBottom:8 }}>مدة الراحة بين السيتات</div>
+          <div style={{ display:"flex", gap:8 }}>
+            {[60,90,120,150].map(v => (
+              <button key={v} onClick={() => setRest(v)} className="cairo" style={{ flex:1, padding:"10px 0", borderRadius:12, fontWeight:700, background: (state.restDuration||90)===v?C.gold:C.surface, color:(state.restDuration||90)===v?C.ink:C.text, border:"1px solid "+((state.restDuration||90)===v?C.gold:C.border) }}>
+                {v}ث
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginBottom:20 }}>
+          <div className="cairo" style={{ fontWeight:700, fontSize:14, color:C.gold, marginBottom:8 }}>صوت عداد الراحة</div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={() => persist({ ...state, soundEnabled: true })} className="cairo" style={{ flex:1, padding:"10px 0", borderRadius:12, fontWeight:700, background: state.soundEnabled!==false?C.gold:C.surface, color: state.soundEnabled!==false?C.ink:C.text, border:"1px solid "+(state.soundEnabled!==false?C.gold:C.border) }}>🔊 شغّال</button>
+            <button onClick={() => persist({ ...state, soundEnabled: false })} className="cairo" style={{ flex:1, padding:"10px 0", borderRadius:12, fontWeight:700, background: state.soundEnabled===false?C.gold:C.surface, color: state.soundEnabled===false?C.ink:C.text, border:"1px solid "+(state.soundEnabled===false?C.gold:C.border) }}>🔇 مقفول</button>
+          </div>
+        </div>
+
+        <div style={{ marginBottom:20 }}>
+          <div className="cairo" style={{ fontWeight:700, fontSize:14, color:C.gold, marginBottom:8 }}>تذكير ديني وقت الراحة</div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={() => persist({ ...state, dhikrEnabled: true })} className="cairo" style={{ flex:1, padding:"10px 0", borderRadius:12, fontWeight:700, background: state.dhikrEnabled!==false?C.gold:C.surface, color: state.dhikrEnabled!==false?C.ink:C.text, border:"1px solid "+(state.dhikrEnabled!==false?C.gold:C.border) }}>🤍 شغّال</button>
+            <button onClick={() => persist({ ...state, dhikrEnabled: false })} className="cairo" style={{ flex:1, padding:"10px 0", borderRadius:12, fontWeight:700, background: state.dhikrEnabled===false?C.gold:C.surface, color: state.dhikrEnabled===false?C.ink:C.text, border:"1px solid "+(state.dhikrEnabled===false?C.gold:C.border) }}>مقفول</button>
+          </div>
+        </div>
+
+        <div style={{ marginBottom:20 }}>
+          <button onClick={() => setShowInfo(true)} className="cairo" style={{ width:"100%", padding:"12px 0", borderRadius:12, fontWeight:700, background:C.surface, border:"1px solid "+C.border, color:C.gold }}>📖 معلومات: أنظمة التمرين والتغذية</button>
+        </div>
+
+        <div style={{ marginBottom:20 }}>
+          <div className="cairo" style={{ fontWeight:700, fontSize:14, color:C.gold, marginBottom:8 }}>نسخة احتياطية من بياناتك</div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={exportData} className="cairo" style={{ flex:1, padding:"10px 0", borderRadius:12, fontWeight:700, background:C.surface, border:"1px solid "+C.border }}>⬇️ تصدير</button>
+            <button onClick={() => fileRef.current.click()} className="cairo" style={{ flex:1, padding:"10px 0", borderRadius:12, fontWeight:700, background:C.surface, border:"1px solid "+C.border }}>⬆️ استيراد</button>
+            <input ref={fileRef} type="file" accept="application/json" style={{ display:"none" }} onChange={importData} />
+          </div>
+          <div style={{ fontSize:11, color:C.textMuted, marginTop:6 }}>احتفظ بنسخة على تليفونك أو الدرايف بتاعك، وترجعها لو غيّرت الموبايل</div>
+        </div>
+
+        <div>
+          <button onClick={resetAll} className="cairo" style={{ width:"100%", padding:"12px 0", borderRadius:12, fontWeight:700, background:"transparent", border:"1px solid "+C.rust, color:C.rust }}>مسح كل البيانات</button>
+        </div>
+      </div>
+      {showInfo && <InfoModal onClose={() => setShowInfo(false)} />}
+    </div>
+  );
+}
+
+function InfoSection({ title, children }) {
+  return (
+    <div style={{ marginBottom:18 }}>
+      <div className="cairo" style={{ fontWeight:800, fontSize:14, color:C.gold, marginBottom:8 }}>{title}</div>
+      <div style={{ fontSize:13, lineHeight:1.9, color:C.text }}>{children}</div>
+    </div>
+  );
+}
+
+function InfoModal({ onClose }) {
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.7)", zIndex:70, display:"flex", alignItems:"flex-end" }}>
+      <div onClick={e => e.stopPropagation()} style={{ width:"100%", background:C.bg, borderTop:"1px solid "+C.border, borderTopLeftRadius:24, borderTopRightRadius:24, padding:20, maxHeight:"88vh", overflowY:"auto" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+          <div className="cairo" style={{ fontWeight:900, fontSize:18 }}>📖 معلومات: التمرين والتغذية</div>
+          <button onClick={onClose} style={{ background:"transparent", color:C.textMuted, fontSize:18 }}>✕</button>
+        </div>
+
+        <InfoSection title="🏋️ أنظمة التمرين الشائعة في الجيم">
+          <b>1) فُل بادي (Full Body):</b> بتمرن الجسم كله في اليوم الواحد، ٣ أيام أسبوعيًا مع يوم راحة بينهم. مناسب أكتر للمبتدئين ولو وقتك محدود، وبيدّي كل عضلة تكرار زيارة أكتر في الأسبوع.
+          <br/><br/>
+          <b>2) أبر/لور (Upper/Lower):</b> يوم للجزء العلوي (صدر وضهر وكتف وذراع)، ويوم للجزء السفلي (رجل)، بالتبادل ٤ أيام أسبوعيًا. توازن كويس بين الحجم والتعافي، مناسب للمستوى المتوسط.
+          <br/><br/>
+          <b>3) بوش/بُل/ليجز (PPL):</b> يوم دفع (صدر، كتف، ترايسبس)، يوم سحب (ضهر، باي)، يوم رجل — ممكن تكررها مرتين في الأسبوع (٦ أيام). بيدّي حجم تمرين كبير لكل عضلة، مناسب للمستوى المتوسط والمتقدم اللي عنده وقت يومي للجيم.
+          <br/><br/>
+          <b>4) عضلة يوم (Bro Split):</b> كل يوم عضلة واحدة بس (صدر، ضهر، رجل، كتف، ذراع...)، ٥ أيام أسبوعيًا. بيدّي تركيز عالي جدًا على كل عضلة في يومها، لكن كل عضلة بتاخد راحة أسبوع كامل، وده مش أفضل حاجة لبناء العضل بسرعة إلا لو مستوى متقدم.
+          <br/><br/>
+          <b>إيه المناسب ليك؟</b> لو مبتدئ أو وقتك قليل: فُل بادي. لو عندك ٤ أيام: أبر/لور. لو عندك ٥-٦ أيام والهدف حجم عضلي: PPL. البرامج الجاهزة في تاب "خطتي" مبنية على النظام ده، تقدر تختار اللي يناسب مستواك وعدد أيامك.
+        </InfoSection>
+
+        <InfoSection title="📈 تضخيم (Bulking) و تنشيف (Cutting)">
+          <b>التضخيم:</b> بتاكل سعرات أكتر من احتياجك اليومي (فائض بسيط، ١٠-١٥٪ تقريبًا) عشان تبني عضل، وده بيجيب معاه شوية دهون زيادة كمان — ده طبيعي وجزء من العملية.
+          <br/><br/>
+          <b>التنشيف:</b> بتاكل سعرات أقل من احتياجك (عجز بسيط، ١٠-٢٠٪ تقريبًا) عشان تنزّل الدهون وتظهر العضل اللي بنيته، مع محافظة على بروتين عالي عشان محافظة على الكتلة العضلية قد الإمكان.
+          <br/><br/>
+          قاعدة عامة للبروتين في الحالتين: حوالي ١.٦-٢.٢ جم بروتين لكل كيلوجرام من وزن جسمك يوميًا. الأرقام دي عامة، ولو عندك حالة صحية أو هدف محدد، الأفضل تتكلم مع أخصائي تغذية.
+        </InfoSection>
+
+        <InfoSection title="🍽️ الأكل قبل وبعد التمرين">
+          <b>قبل التمرين (بـ١-٢ ساعة):</b> وجبة فيها كاربوهيدرات (زي رز أو شوفان أو خبز) + بروتين بسيط، عشان تدّيك طاقة للتمرين من غير ما تحس بتقل في المعدة.
+          <br/><br/>
+          <b>بعد التمرين (خلال ساعتين):</b> بروتين (زي صدور فراخ أو بيض أو واي بروتين) + كاربوهيدرات، عشان تساعد العضل يتصلح ويتعافى.
+          <br/><br/>
+          <b>ميّة:</b> اشرب مياه كفاية طول اليوم مش وقت التمرين بس — الجفاف بيأثر على أدائك بشكل مباشر.
+        </InfoSection>
+
+        <div style={{ fontSize:11, color:C.textMuted, textAlign:"center", marginTop:4 }}>
+          المعلومات دي عامة للتثقيف بس، مش استشارة طبية أو غذائية شخصية. لو عندك حالة صحية أو هدف خاص، استشر دكتور أو أخصائي تغذية.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NavBtn({ emoji, label, active, onClick }) {
+  return (
+    <button onClick={onClick} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4, padding:"4px 8px", background:"transparent", position:"relative" }}>
+      {active && <span style={{ position:"absolute", top:-10, width:20, height:3, borderRadius:3, background:C.gold, boxShadow:"0 0 8px rgba(224,172,79,.7)" }} />}
+      <span style={{ fontSize:20, opacity: active?1:0.55, filter: active?"drop-shadow(0 0 6px rgba(224,172,79,.5))":"none" }}>{emoji}</span>
+      <span className="cairo" style={{ fontSize:10, fontWeight: active?700:400, color: active?C.gold:C.textMuted }}>{label}</span>
+    </button>
+  );
+}
+
+function calcPlates(target, barWeight) {
+  let perSide = (target - barWeight) / 2;
+  if (perSide < 0) perSide = 0;
+  const plateSizes = [25, 20, 15, 10, 5, 2.5, 1.25];
+  let remaining = perSide;
+  const breakdown = [];
+  plateSizes.forEach(p => {
+    const count = Math.floor(remaining / p + 1e-9);
+    if (count > 0) { breakdown.push({ plate: p, count }); remaining -= count * p; }
+  });
+  return { breakdown, perSide, leftover: remaining };
+}
+
+function PlateCalcModal({ initialWeight, onClose }) {
+  const [target, setTarget] = useState(initialWeight || "20");
+  const [bar, setBar] = useState(20);
+  const t = parseFloat(target) || 0;
+  const { breakdown, perSide, leftover } = calcPlates(t, bar);
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.6)", zIndex:60, display:"flex", alignItems:"flex-end" }}>
+      <div onClick={e => e.stopPropagation()} style={{ width:"100%", background:C.bg, borderTop:"1px solid "+C.border, borderTopLeftRadius:24, borderTopRightRadius:24, padding:20 }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+          <div className="cairo" style={{ fontWeight:900, fontSize:18 }}>🧮 حاسبة الأطباق</div>
+          <button onClick={onClose} style={{ background:"transparent", color:C.textMuted, fontSize:18 }}>✕</button>
+        </div>
+        <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>الوزن الكلي (كجم)</div>
+            <input value={target} onChange={e => setTarget(e.target.value)} type="number" inputMode="decimal" style={{ width:"100%", borderRadius:10, padding:"10px 12px", fontSize:16, background:C.surface, color:C.text, border:"1px solid "+C.border }} />
+          </div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>وزن البار</div>
+            <div style={{ display:"flex", gap:6 }}>
+              {[20,15].map(b => (
+                <button key={b} onClick={() => setBar(b)} style={{ flex:1, padding:"10px 0", borderRadius:10, background: bar===b?C.gold:C.surface, color: bar===b?C.ink:C.text, border:"1px solid "+(bar===b?C.gold:C.border), fontWeight:700 }}>{b}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <Card style={{ padding:16, textAlign:"center" }}>
+          {t <= bar ? (
+            <div style={{ fontSize:13, color:C.textMuted }}>الوزن ده أقل من أو يساوي وزن البار نفسه</div>
+          ) : breakdown.length === 0 ? (
+            <div style={{ fontSize:13, color:C.textMuted }}>مفيش تركيبة مضبوطة بالأطباق المتاحة</div>
+          ) : (
+            <>
+              <div style={{ fontSize:12, color:C.textMuted, marginBottom:8 }}>كل جنب من البار (مجموع {perSide.toFixed(2)} كجم)</div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:8, justifyContent:"center" }}>
+                {breakdown.map(b => (
+                  <div key={b.plate} className="cairo" style={{ padding:"8px 14px", borderRadius:12, background:C.surfaceAlt, fontWeight:900, fontSize:16, color:C.gold }}>
+                    {b.plate} <span style={{ fontSize:11, color:C.textMuted, fontWeight:400 }}>× {b.count}</span>
+                  </div>
+                ))}
+              </div>
+              {leftover > 0.01 && <div style={{ fontSize:11, color:C.rust, marginTop:8 }}>فيه {leftover.toFixed(2)} كجم مش هتقدر تظبطها بالأطباق العادية</div>}
+            </>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function Card({ children, style }) {
+  return <div style={{ background:"linear-gradient(180deg, "+C.surface+", "+C.surfaceAlt+")", border:"1px solid "+C.border, borderRadius:16, boxShadow:"0 4px 16px rgba(0,0,0,.35)", ...style }}>{children}</div>;
+}
+
+function HomeTab({ state, setTab, persist }) {
+  const today = todayKey();
+  const todaysPlan = state.plan[new Date().getDay()] || [];
+  const loggedNames = new Set(state.logs.filter(l => l.date === today).map(l => l.exercise));
+
+  let streak = 0, cursor = today;
+  const logDates = new Set(state.logs.map(l => l.date));
+  if (!logDates.has(cursor)) cursor = addDays(cursor, -1);
+  while (logDates.has(cursor)) { streak += 1; cursor = addDays(cursor, -1); }
+
+  const lastSession = state.sessionHistory[state.sessionHistory.length - 1];
+  const milestone = streak === 7 ? "أسبوع كامل من غير ما تفوّت! 🔥" : streak === 30 ? "شهر كامل يا وحش! 🏆" : streak >= 3 ? "ماشي تمام، كمّل كده" : null;
+
+  const totalSessions = state.sessionHistory.length;
+  const totalVolume = state.logs.reduce((sum,l) => sum + l.sets.reduce((s,x) => s + x.weight*x.reps, 0), 0);
+  const hasProgram = !!state.programId;
+
+  if (!hasProgram) {
+    return (
+      <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+        <div className="cairo" style={{ fontSize:15, fontWeight:700, color:C.gold }}>{greeting()}</div>
+        <Card style={{ padding:20 }}>
+          <div className="cairo" style={{ fontWeight:900, fontSize:18, marginBottom:6 }}>يلا نبدأ! 👋</div>
+          <div style={{ fontSize:13, color:C.textMuted, marginBottom:16 }}>اختار برنامج تمرين مناسب لمستواك، وهنظبطلك خطة الأسبوع أوتوماتيك:</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            {PROGRAMS.map(p => (
+              <button key={p.id} onClick={() => persist({ ...state, plan: p.plan, programId: p.id })} style={{ textAlign:"right", borderRadius:14, padding:14, background:C.surfaceAlt, border:"1px solid "+C.border }}>
+                <div className="cairo" style={{ fontWeight:700, fontSize:14, color:C.gold }}>{p.name}</div>
+                <div style={{ fontSize:12, color:C.textMuted, marginTop:4 }}>{p.desc}</div>
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setTab("plan")} className="cairo" style={{ marginTop:14, width:"100%", padding:"10px 0", borderRadius:12, background:"transparent", color:C.textMuted, fontSize:13, border:"1px solid "+C.border }}>
+            أو ظبّط خطة بنفسك من تاب "خطتي"
+          </button>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+      <div className="cairo" style={{ fontSize:15, fontWeight:700, color:C.gold }}>{greeting()}</div>
+      <Card style={{ padding:20 }}>
+        <div style={{ fontSize:14, color:C.textMuted }}>خطة اليوم</div>
+        {todaysPlan.length === 0 ? (
+          <div style={{ marginTop:8, fontSize:14, color:C.textMuted }}>يوم راحة النهاردة، خُد وقتك واسترجع 😌</div>
+        ) : (
+          <div style={{ marginTop:12, display:"flex", flexDirection:"column", gap:10 }}>
+            {todaysPlan.map(ex => (
+              <div key={ex.name} style={{ display:"flex", alignItems:"center", gap:12 }}>
+                <div style={{ width:36, height:36, borderRadius:12, background:C.surfaceAlt, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  <ExerciseIcon name={ex.name} size={22} color={loggedNames.has(ex.name)?C.gold:C.textMuted} />
+                </div>
+                <div style={{ flex:1, fontSize:14 }}>{ex.name}</div>
+                <span style={{ fontSize:12, padding:"2px 8px", borderRadius:999, background:loggedNames.has(ex.name)?C.gold:C.surfaceAlt, color:loggedNames.has(ex.name)?C.ink:C.textMuted }}>
+                  {loggedNames.has(ex.name) ? "تم" : ex.sets+" سيت"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        <button onClick={() => setTab("workout")} className="cairo" style={{ marginTop:16, width:"100%", padding:"14px 0", borderRadius:14, background:"linear-gradient(135deg, #F0C875, "+C.gold+")", color:C.ink, fontWeight:900, fontSize:16, boxShadow:"0 6px 18px rgba(224,172,79,.35)" }}>
+          ابدأ التمرين ‹
+        </button>
+      </Card>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+        <Card style={{ padding:16 }}>
+          <div style={{ fontSize:18 }}>🔥</div>
+          <div className="cairo" style={{ fontWeight:900, fontSize:24, marginTop:8 }}>{streak}</div>
+          <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>أيام متتالية</div>
+        </Card>
+        <Card style={{ padding:16 }}>
+          <div style={{ fontSize:18 }}>🏆</div>
+          <div className="cairo" style={{ fontWeight:900, fontSize:24, marginTop:8 }}>{lastSession ? lastSession.minutes+" د" : "—"}</div>
+          <div style={{ fontSize:12, color:C.textMuted, marginTop:2 }}>آخر تمرين</div>
+        </Card>
+      </div>
+      {totalSessions > 0 && (
+        <Card style={{ padding:16 }}>
+          <div className="cairo" style={{ fontWeight:700, fontSize:13, color:C.gold, marginBottom:10 }}>إحصائياتك الكلية</div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+            <div>
+              <div className="cairo" style={{ fontWeight:900, fontSize:20 }}>{totalSessions}</div>
+              <div style={{ fontSize:11, color:C.textMuted }}>تمرين كامل</div>
+            </div>
+            <div>
+              <div className="cairo" style={{ fontWeight:900, fontSize:20 }}>{Math.round(totalVolume).toLocaleString("ar-EG")}</div>
+              <div style={{ fontSize:11, color:C.textMuted }}>كجم إجمالي مرفوع</div>
+            </div>
+          </div>
+        </Card>
+      )}
+      {milestone && (
+        <div className="cairo" style={{ textAlign:"center", fontSize:13, fontWeight:700, color:C.gold, background:C.surfaceAlt, padding:"10px 0", borderRadius:12 }}>
+          {milestone}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NumPad({ value, onChange, allowDot }) {
+  const tap = (k) => {
+    if (k === "back") return onChange(value.slice(0, -1));
+    if (k === "." && (value.includes(".") || !allowDot)) return;
+    if (value.length >= 5) return;
+    onChange(value + k);
+  };
+  const keys = ["1","2","3","4","5","6","7","8","9", allowDot?".":"0", "0", "back"];
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
+      {keys.map((k,i) => (
+        <button key={i} onClick={() => tap(k)} className="cairo" style={{ padding:"10px 0", borderRadius:8, background:C.surfaceAlt, border:"1px solid "+C.border, fontWeight:700, fontSize:16 }}>
+          {k === "back" ? "⌫" : k}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ExerciseNote({ value, onSave }) {
+  const [text, setText] = useState(value);
+  return (
+    <Card style={{ padding:14 }}>
+      <textarea value={text} onChange={e => setText(e.target.value)} placeholder="مثلاً: خفّف على الكتف الشمال، أو نزّل البار لحد نص الصدر بس"
+        style={{ width:"100%", minHeight:64, borderRadius:10, padding:10, fontSize:13, background:C.surfaceAlt, color:C.text, border:"1px solid "+C.border, resize:"vertical", fontFamily:"inherit" }} />
+      <button onClick={() => onSave(text)} className="cairo" style={{ width:"100%", marginTop:8, padding:"8px 0", borderRadius:10, background:C.gold, color:C.ink, fontWeight:700, fontSize:13 }}>حفظ الملاحظة</button>
+    </Card>
+  );
+}
+
+function WorkoutTab({ state, persist, allExercises, showToast }) {
+  const today = todayKey();
+  const todaysPlan = state.plan[new Date().getDay()] || [];
+  const [selected, setSelected] = useState(() => todaysPlan[0] ? todaysPlan[0].name : (allExercises[0] || ""));
+  const [weightStr, setWeightStr] = useState("");
+  const [repsStr, setRepsStr] = useState("");
+  const [isWarmup, setIsWarmup] = useState(false);
+  const [restLeft, setRestLeft] = useState(0);
+  const restTotal = state.restDuration || 90;
+  const [prompt, setPrompt] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [showAll, setShowAll] = useState(todaysPlan.length === 0);
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [showPlateCalc, setShowPlateCalc] = useState(false);
+  const [showNote, setShowNote] = useState(false);
+  const [dhikrIdx, setDhikrIdx] = useState(0);
+  const restRef = useRef(null);
+  const sessionRef = useRef(null);
+  const dhikrRef = useRef(null);
+  const displayedExercises = showAll ? allExercises : todaysPlan.map(e => e.name);
+
+  const sessionActive = !!state.activeSessionStart;
+
+  useEffect(() => {
+    if (restLeft <= 0) { clearInterval(restRef.current); return; }
+    restRef.current = setInterval(() => setRestLeft(r => {
+      const next = Math.max(0, r - 1);
+      if (next === 0) { buzz([120, 80, 120, 80, 200]); if (state.soundEnabled !== false) playBeep(); }
+      return next;
+    }), 1000);
+    return () => clearInterval(restRef.current);
+  }, [restLeft > 0]);
+
+  useEffect(() => {
+    if (!sessionActive) { clearInterval(sessionRef.current); setElapsed(0); return; }
+    sessionRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - state.activeSessionStart) / 1000)), 1000);
+    return () => clearInterval(sessionRef.current);
+  }, [sessionActive]);
+
+  useEffect(() => {
+    if (restLeft <= 0 || state.dhikrEnabled === false) { clearInterval(dhikrRef.current); return; }
+    const start = Math.floor(Math.random() * DHIKR.length);
+    setDhikrIdx(start);
+    speak(DHIKR[start]);
+    dhikrRef.current = setInterval(() => setDhikrIdx(i => { const n = (i + 1) % DHIKR.length; speak(DHIKR[n]); return n; }), 4000);
+    return () => clearInterval(dhikrRef.current);
+  }, [restLeft > 0]);
+
+  const planEntry = todaysPlan.find(e => e.name === selected);
+  const targetSets = planEntry ? planEntry.sets : 3;
+  const targetReps = planEntry ? planEntry.reps : 10;
+  const allSetsToday = state.logs.filter(l => l.date === today && l.exercise === selected).flatMap(l => l.sets);
+  const setsToday = allSetsToday.filter(s => !s.warmup);
+  const lastSession = state.logs.filter(l => l.exercise === selected && l.date !== today).sort((a,b) => a.date < b.date ? 1 : -1)[0];
+  const lastWorkingSets = lastSession ? lastSession.sets.filter(s => !s.warmup) : [];
+  const lastTop = lastWorkingSets.length ? Math.max(...lastWorkingSets.map(s => s.weight)) : null;
+  const lastTopSet = lastWorkingSets.length ? lastWorkingSets.reduce((a,b) => b.weight >= a.weight ? b : a) : null;
+  const est1RM = lastTopSet ? Math.round(estOneRM(lastTopSet.weight, lastTopSet.reps) * 10) / 10 : null;
+  const suggested = lastTopSet ? suggestNextWeight(lastTopSet.weight, lastTopSet.reps, targetReps) : null;
+
+  useEffect(() => {
+    setShowNote(false);
+    setEditingIndex(null);
+    setIsWarmup(false);
+    if (allSetsToday.length === 0 && lastTopSet) {
+      setWeightStr(String(suggested || lastTopSet.weight));
+      setRepsStr(String(targetReps));
+    } else {
+      setWeightStr(""); setRepsStr("");
+    }
+    // eslint-disable-next-line
+  }, [selected]);
+
+  const startSession = () => persist({ ...state, activeSessionStart: Date.now() });
+  const endSession = () => {
+    const minutes = Math.max(1, Math.round((Date.now() - state.activeSessionStart) / 60000));
+    persist({ ...state, activeSessionStart: null, sessionHistory: [...state.sessionHistory, { date: today, minutes }] });
+    showToast("تمرين " + minutes + " دقيقة 🔥");
+  };
+
+  const addSet = () => {
+    const w = parseFloat(weightStr), r = parseInt(repsStr, 10);
+    if (!w || !r) return;
+    const existing = state.logs.find(l => l.date === today && l.exercise === selected);
+
+    if (editingIndex !== null) {
+      const logs = state.logs.map(l => (l.date===today && l.exercise===selected) ? { ...l, sets: l.sets.map((s,i) => i===editingIndex ? { weight:w, reps:r, warmup:isWarmup } : s) } : l);
+      persist({ ...state, logs });
+      setEditingIndex(null);
+      setWeightStr(""); setRepsStr(""); setIsWarmup(false);
+      showToast("اتعدّل ✅");
+      return;
+    }
+
+    const isPR = !isWarmup && lastTop != null && w > lastTop;
+    let logs;
+    if (existing) logs = state.logs.map(l => l === existing ? { ...l, sets: [...l.sets, { weight:w, reps:r, warmup:isWarmup }] } : l);
+    else logs = [...state.logs, { id: Date.now(), date: today, exercise: selected, sets: [{ weight:w, reps:r, warmup:isWarmup }] }];
+    persist({ ...state, logs });
+    setRepsStr("");
+    if (!isWarmup) {
+      buzz(isPR ? [40,60,40,60,80] : 40);
+      showToast(isPR ? "رقم قياسي جديد! 🏆" : pickHype());
+      setRestLeft(restTotal);
+      if (setsToday.length + 1 >= targetSets) setPrompt(true);
+    } else {
+      buzz(30);
+      showToast("إحماء ✅");
+      setRestLeft(Math.min(restTotal, 45));
+    }
+  };
+
+  const startEditSet = (idx) => {
+    const s = allSetsToday[idx];
+    setWeightStr(String(s.weight));
+    setRepsStr(String(s.reps));
+    setIsWarmup(!!s.warmup);
+    setEditingIndex(idx);
+  };
+  const cancelEdit = () => { setEditingIndex(null); setWeightStr(""); setRepsStr(""); setIsWarmup(false); };
+
+  const fillLastSet = () => {
+    const last = allSetsToday[allSetsToday.length - 1] || (lastSession ? lastSession.sets[lastSession.sets.length - 1] : null);
+    if (!last) return;
+    setWeightStr(String(last.weight));
+    setRepsStr(String(last.reps));
+  };
+
+  const deleteSet = (idx) => {
+    const logs = state.logs.map(l => (l.date===today && l.exercise===selected) ? { ...l, sets: l.sets.filter((_,i) => i!==idx) } : l).filter(l => !(l.date===today && l.exercise===selected && l.sets.length===0));
+    persist({ ...state, logs });
+  };
+
+  const saveNote = (text) => {
+    persist({ ...state, exerciseNotes: { ...state.exerciseNotes, [selected]: text } });
+  };
+
+  const moveToNext = () => {
+    const idx = todaysPlan.findIndex(e => e.name === selected);
+    setPrompt(false);
+    if (idx >= 0 && idx < todaysPlan.length - 1) setSelected(todaysPlan[idx+1].name);
+    else showToast("خلصت التمرين! 🎉");
+  };
+
+  const pct = restTotal ? restLeft/restTotal : 0;
+  const circumference = 2*Math.PI*40;
+
+  const exerciseStatus = {};
+  displayedExercises.forEach(ex => {
+    const planE = todaysPlan.find(e => e.name === ex);
+    const target = planE ? planE.sets : null;
+    const done = state.logs.filter(l => l.date === today && l.exercise === ex).flatMap(l => l.sets).filter(s => !s.warmup).length;
+    exerciseStatus[ex] = { target, done, complete: target != null && done >= target };
+  });
+  const completedCount = todaysPlan.filter(e => exerciseStatus[e.name] && exerciseStatus[e.name].complete).length;
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+      <Card style={{ padding:14, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <div>
+          <div style={{ fontSize:12, color:C.textMuted }}>وقت التمرين</div>
+          <div className="cairo" style={{ fontWeight:900, fontSize:20 }}>{fmtClock(elapsed)}</div>
+        </div>
+        {!sessionActive ? (
+          <button onClick={startSession} className="cairo" style={{ padding:"8px 16px", borderRadius:12, background:C.gold, color:C.ink, fontWeight:700 }}>▶ ابدأ</button>
+        ) : (
+          <button onClick={endSession} className="cairo" style={{ padding:"8px 16px", borderRadius:12, background:C.rust, color:"#fff", fontWeight:700 }}>■ إنهاء</button>
+        )}
+      </Card>
+
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <div style={{ fontSize:12, color:C.textMuted }}>
+          {showAll ? "كل التمارين" : "تمارين اليوم"}
+          {!showAll && todaysPlan.length > 0 && <span className="cairo" style={{ color:C.gold, fontWeight:700 }}> ({completedCount}/{todaysPlan.length})</span>}
+        </div>
+        {todaysPlan.length > 0 && (
+          <button onClick={() => setShowAll(s => !s)} className="cairo" style={{ fontSize:12, fontWeight:700, color:C.gold, background:"transparent" }}>
+            {showAll ? "رجّع لتمارين اليوم" : "عايز تمرين تاني؟"}
+          </button>
+        )}
+      </div>
+      <div style={{ display:"flex", gap:10, overflowX:"auto", paddingBottom:4 }}>
+        {displayedExercises.map(ex => {
+          const st = exerciseStatus[ex];
+          return (
+          <button key={ex} onClick={() => { setSelected(ex); setPrompt(false); }} style={{ position:"relative", display:"flex", flexDirection:"column", alignItems:"center", gap:6, flexShrink:0, padding:"10px 12px", borderRadius:12, minWidth:76, background: selected===ex?C.gold:C.surface, border:"2px solid "+(selected===ex?C.gold:(st && st.complete ? "#4A7A5A" : C.border)), opacity: st && st.complete && selected!==ex ? 0.65 : 1 }}>
+            {st && st.complete && <span style={{ position:"absolute", top:-6, left:-6, background:"#4A7A5A", color:"#fff", borderRadius:999, width:18, height:18, fontSize:11, display:"flex", alignItems:"center", justifyContent:"center" }}>✓</span>}
+            <ExerciseIcon name={ex} size={36} color={selected===ex?C.ink:C.text} />
+            <span style={{ fontSize:11, textAlign:"center", lineHeight:1.2, color: selected===ex?C.ink:C.textMuted }}>{ex}</span>
+            {st && st.target != null && !st.complete && st.done > 0 && (
+              <span className="cairo" style={{ fontSize:10, fontWeight:700, color: selected===ex?C.ink:C.gold }}>{st.done}/{st.target}</span>
+            )}
+          </button>
+        );})}
+      </div>
+
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+        {lastTop ? (
+          <div style={{ fontSize:12, color:C.textMuted }}>آخر مرة: أعلى وزن <span className="cairo" style={{ fontWeight:700, color:C.gold }}>{lastTop} كجم</span></div>
+        ) : <div />}
+        <button onClick={() => setShowNote(s => !s)} className="cairo" style={{ fontSize:12, fontWeight:700, color: state.exerciseNotes[selected] ? C.gold : C.textMuted, background:"transparent" }}>
+          📝 {state.exerciseNotes[selected] ? "ملاحظة محفوظة" : "ضيف ملاحظة"}
+        </button>
+      </div>
+
+      {showNote && <ExerciseNote key={selected} value={state.exerciseNotes[selected] || ""} onSave={(t) => { saveNote(t); setShowNote(false); showToast("اتحفظت الملاحظة 📝"); }} />}
+
+      {est1RM && (
+        <Card style={{ padding:14, display:"flex", justifyContent:"space-around", textAlign:"center" }}>
+          <div>
+            <div style={{ fontSize:10, color:C.textMuted }}>أقصى وزن تقديري (1RM)</div>
+            <div className="cairo" style={{ fontWeight:900, fontSize:18, color:C.gold, marginTop:2 }}>{est1RM} كجم</div>
+          </div>
+          <div style={{ width:1, background:C.border }} />
+          <div>
+            <div style={{ fontSize:10, color:C.textMuted }}>جرّب النهاردة</div>
+            <div className="cairo" style={{ fontWeight:900, fontSize:18, marginTop:2 }}>{suggested} كجم</div>
+          </div>
+        </Card>
+      )}
+
+      {prompt && (
+        <Card style={{ padding:16, textAlign:"center", border:"1px solid "+C.gold, background:C.surfaceAlt }}>
+          <div className="cairo" style={{ fontWeight:700, fontSize:14, marginBottom:12 }}>خلصت {targetSets} سيتات المطلوبة! عايز تعمل إيه؟</div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={() => setPrompt(false)} className="cairo" style={{ flex:1, padding:"10px 0", borderRadius:12, fontSize:14, fontWeight:700, background:C.surface, border:"1px solid "+C.border, color:C.text }}>سيت زيادة</button>
+            <button onClick={moveToNext} className="cairo" style={{ flex:1, padding:"10px 0", borderRadius:12, fontSize:14, fontWeight:700, background:C.gold, color:C.ink }}>التمرين اللي بعده</button>
+          </div>
+        </Card>
+      )}
+
+      {restLeft > 0 && (
+        <Card style={{ padding:16, display:"flex", flexDirection:"column", alignItems:"center" }}>
+          <div style={{ position:"relative", width:96, height:96 }}>
+            <svg width="96" height="96" style={{ transform:"rotate(-90deg)" }}>
+              <circle cx="48" cy="48" r="40" fill="none" stroke={C.surfaceAlt} strokeWidth="7" />
+              <circle cx="48" cy="48" r="40" fill="none" stroke={C.gold} strokeWidth="7" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference*(1-pct)} style={{ transition:"stroke-dashoffset 1s linear" }} />
+            </svg>
+            <div className="cairo" style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:20 }}>{restLeft}</div>
+          </div>
+          <div style={{ fontSize:12, color:C.textMuted, marginTop:8, marginBottom:4 }}>راحة قبل السيت الجاي</div>
+          {state.dhikrEnabled !== false && (
+            <div className="cairo" style={{ fontSize:14, fontWeight:700, color:C.gold, marginBottom:12, minHeight:20 }}>
+              {DHIKR[dhikrIdx % DHIKR.length]}
+            </div>
+          )}
+          <div style={{ display:"flex", gap:8, width:"100%" }}>
+            <button onClick={() => setRestLeft(r => r + 15)} className="cairo" style={{ flex:1, padding:"8px 0", borderRadius:10, background:C.surfaceAlt, border:"1px solid "+C.border, fontSize:13, fontWeight:700 }}>+١٥ث</button>
+            <button onClick={() => setRestLeft(0)} className="cairo" style={{ flex:1, padding:"8px 0", borderRadius:10, background:"transparent", border:"1px solid "+C.rust, color:C.rust, fontSize:13, fontWeight:700 }}>تخطّي الراحة</button>
+          </div>
+        </Card>
+      )}
+
+      <Card style={{ padding:16 }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+          <div style={{ fontSize:12, color:C.textMuted }}>سجّل السيت</div>
+          <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+            <button onClick={() => setShowPlateCalc(true)} style={{ fontSize:16, background:"transparent" }} title="حاسبة الأطباق">🧮</button>
+            {(allSetsToday.length > 0 || lastSession) && (
+              <button onClick={fillLastSet} className="cairo" style={{ fontSize:12, fontWeight:700, color:C.gold, background:"transparent" }}>زي آخر مرة ↺</button>
+            )}
+          </div>
+        </div>
+        <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+          <button onClick={() => setIsWarmup(false)} className="cairo" style={{ flex:1, padding:"8px 0", borderRadius:10, fontWeight:700, fontSize:13, background: !isWarmup?C.gold:C.surfaceAlt, color: !isWarmup?C.ink:C.textMuted, border:"1px solid "+(!isWarmup?C.gold:C.border) }}>سيت شغل 💪</button>
+          <button onClick={() => setIsWarmup(true)} className="cairo" style={{ flex:1, padding:"8px 0", borderRadius:10, fontWeight:700, fontSize:13, background: isWarmup?C.gold:C.surfaceAlt, color: isWarmup?C.ink:C.textMuted, border:"1px solid "+(isWarmup?C.gold:C.border) }}>إحماء 🌡️</button>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
+          <div style={{ borderRadius:12, padding:"12px 0", textAlign:"center", background:C.surfaceAlt }}>
+            <div style={{ fontSize:10, color:C.textMuted }}>الوزن (كجم)</div>
+            <div className="cairo" style={{ fontWeight:900, fontSize:22 }}>{weightStr || "٠"}</div>
+          </div>
+          <div style={{ borderRadius:12, padding:"12px 0", textAlign:"center", background:C.surfaceAlt }}>
+            <div style={{ fontSize:10, color:C.textMuted }}>العدات</div>
+            <div className="cairo" style={{ fontWeight:900, fontSize:22 }}>{repsStr || "٠"}</div>
+          </div>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+          <NumPad value={weightStr} onChange={setWeightStr} allowDot={true} />
+          <NumPad value={repsStr} onChange={setRepsStr} allowDot={false} />
+        </div>
+        <button onClick={addSet} className="cairo" style={{ width:"100%", padding:"12px 0", borderRadius:12, marginTop:12, background:C.gold, color:C.ink, fontWeight:700, fontSize:15 }}>
+          {editingIndex !== null ? "✓ حفظ التعديل" : "✓ سجّل السيت"}
+        </button>
+        {editingIndex !== null && (
+          <button onClick={cancelEdit} className="cairo" style={{ width:"100%", padding:"8px 0", marginTop:8, background:"transparent", color:C.textMuted, fontSize:13 }}>إلغاء التعديل</button>
+        )}
+      </Card>
+
+      {allSetsToday.length > 0 && (
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          <div style={{ fontSize:12, color:C.textMuted }}>سيتات النهاردة ({setsToday.length}/{targetSets}) — دوس على أي سيت تعدّله</div>
+          {allSetsToday.map((s,i) => (
+            <div key={i} onClick={() => startEditSet(i)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", borderRadius:12, background: editingIndex===i?C.surfaceAlt:C.surface, border:"1px solid "+(editingIndex===i?C.gold:(s.warmup?C.border:C.border)) }}>
+              <span style={{ fontSize:14, display:"flex", alignItems:"center", gap:6 }}>
+                سيت {i+1}
+                {s.warmup && <span style={{ fontSize:10, padding:"1px 7px", borderRadius:999, background:C.surfaceAlt, color:C.textMuted }}>إحماء</span>}
+              </span>
+              <span className="cairo" style={{ fontWeight:700, fontSize:14 }}>{s.weight} كجم × {s.reps}</span>
+              <button onClick={(e) => { e.stopPropagation(); deleteSet(i); if (editingIndex===i) cancelEdit(); }} style={{ background:"transparent", color:C.rust, fontSize:16 }}>🗑</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {showPlateCalc && <PlateCalcModal initialWeight={weightStr} onClose={() => setShowPlateCalc(false)} />}
+    </div>
+  );
+}
+
+function HistoryTab({ state }) {
+  const byDate = {};
+  state.logs.forEach(l => {
+    if (!byDate[l.date]) byDate[l.date] = [];
+    byDate[l.date].push(l);
+  });
+  const dates = Object.keys(byDate).sort((a,b) => a < b ? 1 : -1);
+  const sessionsByDate = {};
+  state.sessionHistory.forEach(s => { sessionsByDate[s.date] = s.minutes; });
+
+  if (dates.length === 0) {
+    return <div style={{ fontSize:14, textAlign:"center", padding:"48px 0", color:C.textMuted }}>لسه مفيش تمارين مسجلة. سجّل أول سيت من تاب "تمرين" 💪</div>;
+  }
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+      {dates.map(date => {
+        const dObj = new Date(date + "T00:00:00");
+        const label = DAYS[dObj.getDay()] + " " + dObj.getDate() + "/" + (dObj.getMonth()+1);
+        const totalVolume = byDate[date].reduce((sum,l) => sum + l.sets.reduce((s,x) => s + x.weight*x.reps, 0), 0);
+        return (
+          <Card key={date} style={{ padding:16 }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+              <div className="cairo" style={{ fontWeight:700, fontSize:14 }}>{label}</div>
+              <div style={{ fontSize:11, color:C.textMuted }}>
+                {sessionsByDate[date] ? sessionsByDate[date] + " د · " : ""}{Math.round(totalVolume).toLocaleString("ar-EG")} كجم حجم
+              </div>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {byDate[date].map(l => (
+                <div key={l.id} style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <ExerciseIcon name={l.exercise} size={22} color={C.textMuted} />
+                  <div style={{ flex:1, fontSize:13 }}>{l.exercise}</div>
+                  <div style={{ fontSize:12, color:C.textMuted }}>{l.sets.map(s => s.weight+"×"+s.reps).join(" · ")}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+function PlanTab({ state, persist, allExercises }) {
+  const [customEx, setCustomEx] = useState("");
+  const applyProgram = (p) => persist({ ...state, plan: p.plan, programId: p.id });
+  const toggleExercise = (dayIdx, name) => {
+    const current = state.plan[dayIdx] || [];
+    const has = current.some(e => e.name === name);
+    const next = has ? current.filter(e => e.name !== name) : [...current, { name, sets:3, reps:10 }];
+    persist({ ...state, plan: { ...state.plan, [dayIdx]: next } });
+  };
+  const updateTarget = (dayIdx, name, field, delta) => {
+    const current = state.plan[dayIdx] || [];
+    const next = current.map(e => e.name===name ? { ...e, [field]: Math.max(1, (e[field]||0) + delta) } : e);
+    persist({ ...state, plan: { ...state.plan, [dayIdx]: next } });
+  };
+  const addCustomExercise = () => {
+    if (!customEx.trim()) return;
+    persist({ ...state, customExercises: [...state.customExercises, customEx.trim()] });
+    setCustomEx("");
+  };
+  const removeCustomExercise = (name) => {
+    const nextPlan = {};
+    Object.keys(state.plan).forEach(k => { nextPlan[k] = (state.plan[k]||[]).filter(e => e.name !== name); });
+    persist({ ...state, customExercises: state.customExercises.filter(e => e !== name), plan: nextPlan });
+  };
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+      <div>
+        <div className="cairo" style={{ fontWeight:700, fontSize:14, marginBottom:8, color:C.gold }}>برامج جاهزة</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {PROGRAMS.map(p => (
+            <button key={p.id} onClick={() => applyProgram(p)} style={{ textAlign:"right", borderRadius:16, padding:16, background: state.programId===p.id?C.surfaceAlt:C.surface, border:"1px solid "+(state.programId===p.id?C.gold:C.border) }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <span className="cairo" style={{ fontWeight:700, fontSize:14 }}>{p.name}</span>
+                {state.programId===p.id && <span style={{ fontSize:11, padding:"2px 8px", borderRadius:999, background:C.gold, color:C.ink }}>مفعّل</span>}
+              </div>
+              <div style={{ fontSize:12, color:C.textMuted, marginTop:4 }}>{p.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div className="cairo" style={{ fontWeight:700, fontSize:14, marginBottom:8, color:C.gold }}>تمرين مخصص</div>
+        <div style={{ display:"flex", gap:8 }}>
+          <input value={customEx} onChange={e => setCustomEx(e.target.value)} placeholder="اسم التمرين" style={{ flex:1, borderRadius:8, padding:"8px 12px", fontSize:14, background:C.surface, color:C.text, border:"1px solid "+C.border }} />
+          <button onClick={addCustomExercise} style={{ padding:"0 16px", borderRadius:8, background:C.gold, color:C.ink, fontSize:16 }}>+</button>
+        </div>
+        {state.customExercises.length > 0 && (
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:10 }}>
+            {state.customExercises.map(ex => (
+              <div key={ex} style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, padding:"6px 10px", borderRadius:999, background:C.surface, border:"1px solid "+C.border }}>
+                {ex}
+                <button onClick={() => removeCustomExercise(ex)} style={{ background:"transparent", color:C.rust, fontSize:13 }}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="cairo" style={{ fontWeight:700, fontSize:14, marginBottom:8, color:C.gold }}>خطة الأسبوع (عدّل يدويًا)</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          {DAYS.map((dayName, idx) => {
+            const dayPlan = state.plan[idx] || [];
+            return (
+            <Card key={idx} style={{ padding:14 }}>
+              <div className="cairo" style={{ fontSize:14, fontWeight:700, marginBottom:10 }}>{dayName}</div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom: dayPlan.length ? 12 : 0 }}>
+                {allExercises.map(ex => {
+                  const active = dayPlan.some(e => e.name === ex);
+                  return (
+                    <button key={ex} onClick={() => toggleExercise(idx, ex)} style={{ display:"flex", alignItems:"center", gap:4, fontSize:12, padding:"6px 10px", borderRadius:999, background: active?C.gold:C.surfaceAlt, color: active?C.ink:C.textMuted, border:"1px solid "+(active?C.gold:C.border) }}>
+                      <ExerciseIcon name={ex} size={14} color={active?C.ink:C.textMuted} />{ex}
+                    </button>
+                  );
+                })}
+              </div>
+              {dayPlan.length > 0 && (
+                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                  {dayPlan.map(e => (
+                    <div key={e.name} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 10px", borderRadius:10, background:C.surfaceAlt }}>
+                      <div style={{ flex:1, fontSize:12 }}>{e.name}</div>
+                      <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+                        <button onClick={() => updateTarget(idx, e.name, "sets", -1)} style={{ width:22, height:22, borderRadius:6, background:C.surface, color:C.text, fontSize:13, border:"1px solid "+C.border }}>−</button>
+                        <span className="cairo" style={{ fontSize:12, fontWeight:700, minWidth:38, textAlign:"center" }}>{e.sets} سيت</span>
+                        <button onClick={() => updateTarget(idx, e.name, "sets", 1)} style={{ width:22, height:22, borderRadius:6, background:C.surface, color:C.text, fontSize:13, border:"1px solid "+C.border }}>+</button>
+                      </div>
+                      <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+                        <button onClick={() => updateTarget(idx, e.name, "reps", -1)} style={{ width:22, height:22, borderRadius:6, background:C.surface, color:C.text, fontSize:13, border:"1px solid "+C.border }}>−</button>
+                        <span className="cairo" style={{ fontSize:12, fontWeight:700, minWidth:42, textAlign:"center" }}>{e.reps} عدة</span>
+                        <button onClick={() => updateTarget(idx, e.name, "reps", 1)} style={{ width:22, height:22, borderRadius:6, background:C.surface, color:C.text, fontSize:13, border:"1px solid "+C.border }}>+</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          );})}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniLineChart({ data }) {
+  const w = 320, h = 160, pad = 28;
+  const weights = data.map(d => d.weight);
+  const min = Math.min(...weights), max = Math.max(...weights);
+  const range = (max - min) || 1;
+  const stepX = data.length > 1 ? (w - 2*pad) / (data.length - 1) : 0;
+  const points = data.map((d,i) => ({
+    x: pad + i*stepX,
+    y: h - pad - ((d.weight - min) / range) * (h - 2*pad),
+    ...d,
+  }));
+  const pathD = points.map((p,i) => (i===0?"M":"L") + p.x.toFixed(1) + " " + p.y.toFixed(1)).join(" ");
+  return (
+    <svg width="100%" height={h} viewBox={"0 0 "+w+" "+h}>
+      <line x1={pad} y1={h-pad} x2={w-pad} y2={h-pad} stroke={C.border} strokeWidth="1" />
+      <path d={pathD} fill="none" stroke={C.gold} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      {points.map((p,i) => <circle key={i} cx={p.x} cy={p.y} r="3.5" fill={C.gold} />)}
+      <text x={pad} y={h-8} fontSize="10" fill={C.textMuted}>{points[0].date}</text>
+      <text x={w-pad} y={h-8} fontSize="10" fill={C.textMuted} textAnchor="end">{points[points.length-1].date}</text>
+      <text x={pad} y="14" fontSize="10" fill={C.textMuted}>{max} كجم</text>
+    </svg>
+  );
+}
+
+function ProgressTab({ state, allExercises, persist }) {
+  const [selected, setSelected] = useState(allExercises[0] || "");
+  const [bwInput, setBwInput] = useState("");
+  const today = todayKey();
+  const data = state.logs.filter(l => l.exercise === selected).sort((a,b) => a.date > b.date ? 1 : -1).map(l => ({ date: l.date.slice(5), weight: Math.max(...l.sets.map(s => s.weight)) }));
+  const days = Array.from({ length: 28 }).map((_, i) => addDays(today, i - 27));
+  const logDates = new Set(state.logs.map(l => l.date));
+  const bodyWeights = (state.bodyWeights || []).slice().sort((a,b) => a.date > b.date ? 1 : -1);
+  const bwChartData = bodyWeights.map(b => ({ date: b.date.slice(5), weight: b.weight }));
+  const latestBw = bodyWeights[bodyWeights.length - 1];
+
+  const addBodyWeight = () => {
+    const w = parseFloat(bwInput);
+    if (!w) return;
+    const existing = (state.bodyWeights || []).find(b => b.date === today);
+    let bodyWeightsNext;
+    if (existing) bodyWeightsNext = state.bodyWeights.map(b => b.date === today ? { date: today, weight: w } : b);
+    else bodyWeightsNext = [...(state.bodyWeights || []), { date: today, weight: w }];
+    persist({ ...state, bodyWeights: bodyWeightsNext });
+    setBwInput("");
+  };
+
+  const records = allExercises.map(ex => {
+    const logsForEx = state.logs.filter(l => l.exercise === ex);
+    if (logsForEx.length === 0) return null;
+    let best = { weight: 0, date: null };
+    logsForEx.forEach(l => l.sets.forEach(s => { if (s.weight > best.weight) best = { weight: s.weight, date: l.date }; }));
+    return { ex, ...best };
+  }).filter(Boolean).sort((a,b) => b.weight - a.weight);
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+      <div>
+        <div className="cairo" style={{ fontSize:14, fontWeight:700, color:C.gold, marginBottom:8 }}>⚖️ وزن جسمك</div>
+        <Card style={{ padding:16 }}>
+          <div style={{ display:"flex", gap:8, marginBottom: bwChartData.length >= 2 ? 12 : 0 }}>
+            <input value={bwInput} onChange={e => setBwInput(e.target.value)} type="number" inputMode="decimal" placeholder={latestBw ? "آخر وزن: "+latestBw.weight+" كجم" : "وزنك النهاردة (كجم)"} style={{ flex:1, borderRadius:10, padding:"10px 12px", fontSize:14, background:C.surfaceAlt, color:C.text, border:"1px solid "+C.border }} />
+            <button onClick={addBodyWeight} className="cairo" style={{ padding:"0 18px", borderRadius:10, background:C.gold, color:C.ink, fontWeight:700 }}>حفظ</button>
+          </div>
+          {bwChartData.length >= 2 && <MiniLineChart data={bwChartData} />}
+        </Card>
+      </div>
+      {records.length > 0 && (
+        <div>
+          <div className="cairo" style={{ fontSize:14, fontWeight:700, color:C.gold, marginBottom:8 }}>🏆 أرقامك القياسية</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+            {records.map(r => (
+              <div key={r.ex} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", borderRadius:12, background:C.surface, border:"1px solid "+C.border }}>
+                <ExerciseIcon name={r.ex} size={22} color={C.textMuted} />
+                <span style={{ flex:1, fontSize:13 }}>{r.ex}</span>
+                <span className="cairo" style={{ fontWeight:900, fontSize:14, color:C.gold }}>{r.weight} كجم</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <div style={{ display:"flex", gap:10, overflowX:"auto", paddingBottom:4 }}>
+        {allExercises.map(ex => (
+          <button key={ex} onClick={() => setSelected(ex)} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, flexShrink:0, padding:"10px 12px", borderRadius:12, minWidth:76, background: selected===ex?C.gold:C.surface, border:"2px solid "+(selected===ex?C.gold:C.border) }}>
+            <ExerciseIcon name={ex} size={34} color={selected===ex?C.ink:C.text} />
+            <span style={{ fontSize:11, textAlign:"center", lineHeight:1.2, color: selected===ex?C.ink:C.textMuted }}>{ex}</span>
+          </button>
+        ))}
+      </div>
+      <Card style={{ padding:16 }}>
+        {data.length < 2 ? (
+          <div style={{ fontSize:14, textAlign:"center", padding:"32px 0", color:C.textMuted }}>سجّل التمرين ده أكتر من مرة عشان تشوف تقدمك</div>
+        ) : <MiniLineChart data={data} />}
+      </Card>
+      <div>
+        <div style={{ fontSize:12, color:C.textMuted, marginBottom:8 }}>آخر ٢٨ يوم</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(7, 1fr)", gap:6 }}>
+          {days.map(d => <div key={d} style={{ aspectRatio:"1", borderRadius:4, background: logDates.has(d)?C.gold:C.surfaceAlt }} />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+window.__aashLoaded = true;
+setTimeout(() => {
+  const s = document.getElementById("splash");
+  if (s) { s.classList.add("hide"); setTimeout(() => s.remove(), 600); }
+}, 900);
+</script>
+
+<script>
+  // شبكة أمان: لو محمّل المكتبات فشل في كل المصادر (unpkg وjsDelivr) قبل ما
+  // React يخلص تحميله، السبلاش هيفضل عالق للأبد من غير الكود ده. بنستنى لحد
+  // 40 ثانية (وقت كافي للمحمّل يجرب المصادر البديلة كلها)، وبنقفل بدري لو
+  // حصل خطأ واضح، وبعدين بنورّي رسالة واضحة بدل ما نسيب المستخدم يتفرج على شاشة فاضية.
+  let aashWaited = 0;
+  const aashWatcher = setInterval(() => {
+    aashWaited += 500;
+    if (window.__aashLoaded || (window.__aashLoadError && aashWaited < 500)) {
+      // لسه محتاجين نستنى شوية إضافية حتى لو حصل error، بس لو loaded خلاص وقفنا فورًا
+    }
+    const shouldShow = window.__aashLoaded ? false : (window.__aashLoadError || aashWaited >= 55000);
+    if (shouldShow) {
+      clearInterval(aashWatcher);
+      const s = document.getElementById("splash");
+      if (s && !s.classList.contains("hide")) {
+        const errMsg = (window.__aashLoadError && window.__aashLoadError.message) || "";
+        s.innerHTML =
+          '<div style="text-align:center;padding:24px;color:#E0AC4F;font-family:Cairo,sans-serif">' +
+          '<div style="font-size:18px;font-weight:900;margin-bottom:10px">في مشكلة في تحميل التطبيق</div>' +
+          '<div style="font-size:14px;color:#A39A8B;margin-bottom:18px">اتأكد إنك متصل بالنت أول مرة تفتح فيها التطبيق، وبعدين جرب تاني</div>' +
+          (errMsg ? '<div style="font-size:11px;color:#5c554a;margin-bottom:18px;direction:ltr;font-family:monospace">' + errMsg + '</div>' : '') +
+          '<button onclick="location.reload()" style="background:#E0AC4F;color:#141210;border:none;border-radius:10px;padding:10px 24px;font-weight:900;font-family:Cairo,sans-serif;font-size:14px">إعادة المحاولة</button>' +
+          '</div>';
+      }
+    } else if (window.__aashLoaded) {
+      clearInterval(aashWatcher);
+    }
+  }, 500);
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>
